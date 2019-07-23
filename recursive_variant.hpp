@@ -145,3 +145,7 @@ constexpr auto visit(Visitor&& visitor, recursive_variant<Types...>&& var)
   return std::visit(std::move(unwrapping_visitor), std::move(var));
 }
 
+
+// clean up after ourself
+#undef IS_COMPLETE
+
