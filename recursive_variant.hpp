@@ -10,34 +10,42 @@ namespace detail
 
 
 template<class T>
-class wrapper
+class wrapped
 {
   public:
     template<class... Args,
              class = std::enable_if_t<
                std::is_constructible_v<T,Args&&...>
              >>
-    wrapper(Args&&... args)
+    wrapped(Args&&... args)
       : value_(std::make_unique<T>(std::forward<Args>(args)...))
     {}
 
-    wrapper(wrapper&&) = default;
+    wrapped(const T& value)
+      : value_(std::make_unique<T>(value))
+    {}
 
-    wrapper(const wrapper& other)
+    wrapped(T&& value)
+      : value_(std::make_unique<T>(std::move(value)))
+    {}
+
+    wrapped(wrapped&&) = default;
+
+    wrapped(const wrapped& other)
       : value_(std::make_unique<T>(other.value()))
     {}
 
-    wrapper& operator=(wrapper&&) = default;
-    wrapper& operator=(wrapper&) = default;
+    wrapped& operator=(wrapped&&) = default;
+    wrapped& operator=(wrapped&) = default;
 
     T& value()
     {
-      return value_;
+      return *value_;
     }
 
     const T& value() const
     {
-      return value_;
+      return *value_;
     }
 
   private:
@@ -68,7 +76,7 @@ struct is_complete {
 
 
 template<class T>
-using wrap_if_incomplete_t = std::conditional_t<IS_COMPLETE(T), T, wrapper<T>>;
+using wrap_if_incomplete_t = std::conditional_t<IS_COMPLETE(T), T, wrapped<T>>;
 
 
 template<class Function>
@@ -85,19 +93,19 @@ struct unwrap_and_call
 
   // unwrap wrapped arguments before calling f
   template<class Arg>
-  auto operator()(wrapper<Arg>& arg) const
+  auto operator()(wrapped<Arg>& arg) const
   {
     return f_(arg.value());
   }
 
   template<class Arg>
-  auto operator()(const wrapper<Arg>& arg) const
+  auto operator()(const wrapped<Arg>& arg) const
   {
     return f_(arg.value());
   }
 
   template<class Arg>
-  auto operator()(wrapper<Arg>&& arg) const
+  auto operator()(wrapped<Arg>&& arg) const
   {
     return f_(std::move(arg.value()));
   }
@@ -115,6 +123,29 @@ class recursive_variant : public std::variant<detail::wrap_if_incomplete_t<Types
 
   public:
     using super_t::super_t;
+
+    template<class U,
+
+             std::enable_if_t<
+               std::is_constructible_v<super_t, U&&>
+             >* = nullptr>
+    recursive_variant(U&& value)
+      : super_t(std::forward<U>(value))
+    {}
+
+    // add a wrapping constructor
+    template<class U,
+
+             std::enable_if_t<
+               // if std::variant<Types...> is not directly constructible from U...
+               !std::is_constructible_v<super_t, U&&> and
+
+               // but std::variant<Types...> *is* constructible from a wrapped<U>...
+               std::is_constructible_v<super_t, detail::wrapped<std::decay_t<U>>>
+             >* = nullptr>
+    recursive_variant(U&& value)
+      : super_t(detail::wrapped<std::decay_t<U>>(std::forward<U>(value)))
+    {}
 };
 
 
