@@ -84,30 +84,36 @@ struct unwrap_and_call
 {
   mutable Function f_;
 
+  // forward unwrapped arguments along
+  template<class Arg>
+  static Arg&& unwrap_if(Arg&& arg)
+  {
+    return std::forward<Arg>(arg);
+  }
+
+  template<class Arg>
+  static Arg& unwrap_if(detail::wrapped<Arg>& arg)
+  {
+    return arg.value();
+  }
+
+  template<class Arg>
+  static const Arg& unwrap_if(const detail::wrapped<Arg>& arg)
+  {
+    return arg.value();
+  }
+
+  template<class Arg>
+  static Arg&& unwrap_if(detail::wrapped<Arg>&& arg)
+  {
+    return std::move(arg.value());
+  }
+
   // forward unwrapped arguments to f
-  template<class Arg>
-  auto operator()(Arg&& arg) const
+  template<class... Args>
+  auto operator()(Args&&... args) const
   {
-    return f_(std::forward<Arg>(arg));
-  }
-
-  // unwrap wrapped arguments before calling f
-  template<class Arg>
-  auto operator()(wrapped<Arg>& arg) const
-  {
-    return f_(arg.value());
-  }
-
-  template<class Arg>
-  auto operator()(const wrapped<Arg>& arg) const
-  {
-    return f_(arg.value());
-  }
-
-  template<class Arg>
-  auto operator()(wrapped<Arg>&& arg) const
-  {
-    return f_(std::move(arg.value()));
+    return f_(unwrap_if(std::forward<Args>(args))...);
   }
 };
 
@@ -149,31 +155,13 @@ class recursive_variant : public std::variant<detail::wrap_if_incomplete_t<Types
 };
 
 
-template<class Visitor, class... Types>
-constexpr auto visit(Visitor&& visitor, recursive_variant<Types...>& var)
+template<class Visitor, class Variant, class... Variants>
+constexpr auto visit(Visitor&& visitor, Variant&& var, Variants&&... vars)
 {
   // unwrap wrapped types before the visitor sees them
   detail::unwrap_and_call<std::decay_t<Visitor>> unwrapping_visitor{std::forward<Visitor>(visitor)};
 
-  return std::visit(std::move(unwrapping_visitor), var);
-}
-
-template<class Visitor, class... Types>
-constexpr auto visit(Visitor&& visitor, const recursive_variant<Types...>& var)
-{
-  // unwrap wrapped types before the visitor sees them
-  detail::unwrap_and_call<std::decay_t<Visitor>> unwrapping_visitor{std::forward<Visitor>(visitor)};
-
-  return std::visit(std::move(unwrapping_visitor), var);
-}
-
-template<class Visitor, class... Types>
-constexpr auto visit(Visitor&& visitor, recursive_variant<Types...>&& var)
-{
-  // unwrap wrapped types before the visitor sees them
-  detail::unwrap_and_call<std::decay_t<Visitor>> unwrapping_visitor{std::forward<Visitor>(visitor)};
-
-  return std::visit(std::move(unwrapping_visitor), std::move(var));
+  return std::visit(std::move(unwrapping_visitor), std::forward<Variant>(var), std::forward<Variants>(vars)...);
 }
 
 
